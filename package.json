@@ -1,6 +1,6 @@
 {
   "name": "bitcoin",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -37,7 +37,7 @@
     "@angular/language-service": "~13.3.0",
     "@types/jasmine": "~3.3.8",
     "@types/jasminewd2": "~2.0.3",
-    "@types/node": "~8.9.4",
+    "@types/node": "^24.10.1",
     "angular-cli-ghpages": "^1.0.0",
     "codelyzer": "^5.2.2",
     "jasmine-core": "~3.4.0",
