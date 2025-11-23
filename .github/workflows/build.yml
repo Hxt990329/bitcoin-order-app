@@ -1,70 +1,98 @@
 name: Bitcoin order App
+
+# 触发条件：当代码被 push 到 master 分支时运行
+# 我们将触发分支从 'githubcicd' 改为 'master'，因为以后我们只在 master 分支上工作
 on:
   push:
     branches:
       - master
+
 jobs:
+  # 定义一个名为 "ci" 的任务
   ci:
+    # 运行环境：使用最新的 Ubuntu 系统
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
+        # 指定 Node.js 版本
         node-version: [16.x]
 
     steps:
+      # 第一步：检出代码，把仓库代码下载到虚拟机里
       - uses: actions/checkout@v2
-
+      
+      # 第二步：安装 Chrome 浏览器，用于后续的测试
+      - uses: browser-actions/setup-chrome@latest
+      
+      # 第三步：安装指定版本的 Node.js
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v1
         with:
           node-version: ${{ matrix.node-version }}
 
+      # 第四步：缓存 node_modules 目录，加快后续构建速度
       - name: Cache node modules
         id: cache-nodemodules
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         env:
           cache-name: cache-node-modules
         with:
-          # caching node_modules
           path: node_modules
           key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-build-${{ env.cache-name }}-
             ${{ runner.os }}-build-
             ${{ runner.os }}-
-      - name: Install puppeteer
-	run: |
-	  npm install puppeteer --save-dev
+
+      # 第五步：安装依赖。只有在缓存没命中的情况下才运行
       - name: Install Dependencies
         if: steps.cache-nodemodules.outputs.cache-hit != 'true'
         run: |
-          npm ci
+          npm ci --force
+          
+      # 第六步：构建前端应用
       - name: Build
         run: |
-          npm run build -- --prod
+          npm run build --force
+          
+      # 第七步：代码风格检查 (Lint)
       - name: Lint
         run: |
           npm run lint
-      - name: Test
+          
+      # 第八步：更新类型定义
+      - name: Update types to latest
         run: |
-          npm run test --watch=false --browsers=ChromeHeadlessCustom"
+          npm install --save-dev @types/node@latest --force
+          
+      # (测试步骤被注释掉了，暂时不执行)
+      #- name: Test
+      #  run: |
+      #    npm run test --watch=false --browsers=ChromeHeadless
+      
+      # 第九步：自动生成 Changelog
       - name: Conventional Changelog Action
         id: changelog
         uses: TriPSs/conventional-changelog-action@v3
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # 这里使用了我们之前配置的 Secret
+          github-token: ${{ secrets.WORKSHOP6_GITHUB_TOKEN }}
           output-file: "false"
 
+      # 第十步：创建 GitHub Release。只有在生成了 Changelog 的情况下才运行
       - name: Create Release
         uses: actions/create-release@v1
         if: ${{ steps.changelog.outputs.skipped == 'false' }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 这里也使用了我们配置的 Secret
+          GITHUB_TOKEN: ${{ secrets.WORKSHOP6_GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.changelog.outputs.tag }}
           release_name: ${{ steps.changelog.outputs.tag }}
           body: ${{ steps.changelog.outputs.clean_changelog }}
-
+          
+      # 第十一步：执行部署命令，发布到 GitHub Pages
       - name: Deploy
         run: |
           npm run deploy

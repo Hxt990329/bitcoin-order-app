@@ -1,0 +1,41 @@
+name: "linting-tool-scan"
+
+on:
+  push:
+    branches: [githubcicd]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [16.x]
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Dependencies
+        # 注意：这里有一个小 bug，原教程缺少定义 cache-nodemodules 的步骤。
+        # 为了简单起见，我们直接安装依赖，不检查缓存。
+        run: |
+          npm ci --force
+
+      - name: Installing JSHint
+        run: |
+          sudo npm install -g jshint
+
+      - name: Change script permission
+        run: |
+          chmod +x scripts/jshint-script.sh
+
+      - name: Run scan with JSHint
+        run: scripts/jshint-script.sh
+
+      # 最后一步：将扫描报告作为 "Artifact" 上传，方便下载
+      - name: Archive production artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linting tool report
+          path: |
+            ./JSHint-report
