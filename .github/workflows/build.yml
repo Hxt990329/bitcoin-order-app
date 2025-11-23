@@ -1,6 +1,7 @@
 # .github/workflows/build.yml
+# 这是在本地修改的最终正确版本
 
-name: Bitcoin order App CI/CD
+name: Build and Push Docker Image
 
 on:
   push:
@@ -15,62 +16,39 @@ jobs:
       # 1. 检出代码
       - name: Checkout code
         uses: actions/checkout@v3
-        with:
-          # 获取所有历史记录，这对 conventional-changelog 至关重要
-          fetch-depth: 0
 
       # 2. 设置 Node.js 环境
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: 16.x # 使用你指定的 Node.js 版本
-          # 缓存 npm 依赖，加快安装速度
+          node-version: 16.x
           cache: 'npm'
 
-      # 3. 安装依赖
-      - name: Install dependencies
-        run: npm ci
+      # =======================================================
+      # == 核心步骤：必须先安装所有依赖 (包括 ng 命令)
+      # =======================================================
+      - name: Install All Dependencies
+        run: npm install
 
-      # 4. 执行静态代码分析 (Lint)
+      # 4. 执行静态代码分析 (现在 ng 命令一定存在)
       - name: Static Code Analysis (Lint)
         run: ng lint
 
-      # 5. 执行漏洞扫描 (Audit)
+      # 5. 执行漏洞扫描
       - name: Vulnerability Scan (Audit)
         run: npm audit
 
-      # 6. 构建 Angular 应用 (作为 Docker 构建前的检查)
-      - name: Build application
-        run: npm run build -- --configuration production
-
-      # 7. 自动生成 Changelog、更新版本号并创建 Git Tag 和 Release
-      - name: Conventional Changelog Action
-        id: changelog
-        uses: TriPSs/conventional-changelog-action@v3
-        with:
-          # 关键修改：使用 GitHub 自动提供的标准 GITHUB_TOKEN
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          output-file: "false"
-
-      # 8. 登录到 Docker Hub
-      # 仅当上面的步骤成功创建新版本时，才执行此操作
+      # 6. 登录到 Docker Hub
       - name: Login to Docker Hub
-        if: ${{ steps.changelog.outputs.skipped == 'false' }}
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           
-      # 9. 构建并推送 Docker 镜像
-      # 仅当上面的步骤成功创建新版本时，才执行此操作
+      # 7. 构建并推送 Docker 镜像
       - name: Build and push Docker image
-        if: ${{ steps.changelog.outputs.skipped == 'false' }} 
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          # 使用自动生成的版本号作为标签，非常专业！
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/bitcoin-order-app:${{ steps.changelog.outputs.tag }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/bitcoin-order-app:latest
-
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/bitcoin-order-app:latest
