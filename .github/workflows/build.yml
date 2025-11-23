@@ -1,5 +1,5 @@
 # .github/workflows/build.yml
-# 这是在本地修改的最终正确版本
+# 最终修正版：使用 npm run lint 来确保找到 ng命令
 
 name: Build and Push Docker Image
 
@@ -24,15 +24,16 @@ jobs:
           node-version: 16.x
           cache: 'npm'
 
-      # =======================================================
-      # == 核心步骤：必须先安装所有依赖 (包括 ng 命令)
-      # =======================================================
+      # 3. 安装所有依赖
       - name: Install All Dependencies
         run: npm install
 
-      # 4. 执行静态代码分析 (现在 ng 命令一定存在)
+      # =======================================================
+      # == 核心修正：使用 'npm run lint'
+      # == npm 会自动处理 ng 命令的路径问题
+      # =======================================================
       - name: Static Code Analysis (Lint)
-        run: ng lint
+        run: npm run lint
 
       # 5. 执行漏洞扫描
       - name: Vulnerability Scan (Audit)
@@ -52,3 +53,4 @@ jobs:
           context: .
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/bitcoin-order-app:latest
+
