@@ -1,98 +1,97 @@
-name: Bitcoin order App
+name: Bitcoin order App CI/CD
 
-# 触发条件：当代码被 push 到 master 分支时运行
-# 我们将触发分支从 'githubcicd' 改为 'master'，因为以后我们只在 master 分支上工作
 on:
   push:
     branches:
       - master
 
 jobs:
-  # 定义一个名为 "ci" 的任务
-  ci:
-    # 运行环境：使用最新的 Ubuntu 系统
+  build-and-deploy:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        # 指定 Node.js 版本
-        node-version: [16.x]
-
     steps:
-      # 第一步：检出代码，把仓库代码下载到虚拟机里
-      - uses: actions/checkout@v2
-      
-      # 第二步：安装 Chrome 浏览器，用于后续的测试
-      - uses: browser-actions/setup-chrome@latest
-      
-      # 第三步：安装指定版本的 Node.js
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v1
+      # 1. 检出代码
+      - name: Checkout code
+        uses: actions/checkout@v3
         with:
-          node-version: ${{ matrix.node-version }}
+          # 获取所有历史记录，这对 conventional-changelog 至关重要
+          fetch-depth: 0
 
-      # 第四步：缓存 node_modules 目录，加快后续构建速度
-      - name: Cache node modules
-        id: cache-nodemodules
-        uses: actions/cache@v3
-        env:
-          cache-name: cache-node-modules
+      # 2. 设置 Node.js 环境
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          path: node_modules
-          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-build-${{ env.cache-name }}-
-            ${{ runner.os }}-build-
-            ${{ runner.os }}-
+          node-version: 16.x
+          # 缓存 npm 依赖，加快安装速度
+          cache: 'npm'
 
-      # 第五步：安装依赖。只有在缓存没命中的情况下才运行
-      - name: Install Dependencies
-        if: steps.cache-nodemodules.outputs.cache-hit != 'true'
-        run: |
-          npm ci --force
-          
-      # 第六步：构建前端应用
-      - name: Build
-        run: |
-          npm run build --force
-          
-      # 第七步：代码风格检查 (Lint)
-      - name: Lint
-        run: |
-          npm run lint
-          
-      # 第八步：更新类型定义
-      - name: Update types to latest
-        run: |
-          npm install --save-dev @types/node@latest --force
-          
+      # 3. 安装依赖
+      # 'npm ci' 比 'npm install' 更快、更可靠，适合 CI 环境
+      - name: Install dependencies
+        run: npm ci
+
+      # =================================================================
+      # == 作业要求：静态代码分析和漏洞扫描
+      # =================================================================
+      
+      # 4. (Bonus) 执行静态代码分析 (ng lint)
+      - name: Static Code Analysis (Lint)
+        run: ng lint
+
+      # 5. (Bonus) 执行漏洞扫描 (npm audit)
+      # 使用 'npm audit' 而不是 'npm audit fix'，因为在 CI 中我们只想发现问题而不是自动修复
+      - name: Vulnerability Scan (Audit)
+        run: npm audit
+
+      # 6. 构建 Angular 应用
+      - name: Build application
+        run: npm run build -- --configuration production
+
       # (测试步骤被注释掉了，暂时不执行)
-      #- name: Test
-      #  run: |
-      #    npm run test --watch=false --browsers=ChromeHeadless
+      # - name: Run tests
+      #   run: npm test -- --watch=false --browsers=ChromeHeadless
       
-      # 第九步：自动生成 Changelog
+      # =================================================================
+      # == 作业要求：自动生成版本和 Release
+      # =================================================================
+
+      # 7. (Bonus) 自动生成 Changelog、更新版本号并创建 Git Tag
       - name: Conventional Changelog Action
         id: changelog
         uses: TriPSs/conventional-changelog-action@v3
         with:
-          # 这里使用了我们之前配置的 Secret
           github-token: ${{ secrets.WORKSHOP6_GITHUB_TOKEN }}
+          # 我们不再需要单独的 create-release 步骤，这个 action 会自动完成
           output-file: "false"
 
-      # 第十步：创建 GitHub Release。只有在生成了 Changelog 的情况下才运行
-      - name: Create Release
-        uses: actions/create-release@v1
-        if: ${{ steps.changelog.outputs.skipped == 'false' }}
-        env:
-          # 这里也使用了我们配置的 Secret
-          GITHUB_TOKEN: ${{ secrets.WORKSHOP6_GITHUB_TOKEN }}
+      # =================================================================
+      # == 作业要求：Docker 化并推送到 Docker Hub
+      # =================================================================
+      
+      # 8. (Bonus) 登录到 Docker Hub
+      - name: Login to Docker Hub
+        if: ${{ steps.changelog.outputs.skipped == 'false' }} # 仅在新版本发布时运行
+        uses: docker/login-action@v2
         with:
-          tag_name: ${{ steps.changelog.outputs.tag }}
-          release_name: ${{ steps.changelog.outputs.tag }}
-          body: ${{ steps.changelog.outputs.clean_changelog }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
           
-      # 第十一步：执行部署命令，发布到 GitHub Pages
-      - name: Deploy
-        run: |
-          npm run deploy
+      # 9. (Bonus) 构建并推送 Docker 镜像
+      - name: Build and push Docker image
+        if: ${{ steps.changelog.outputs.skipped == 'false' }} # 仅在新版本发布时运行
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          # 镜像标签将是 '你的用户名/app名:版本号' 和 '你的用户名/app名:latest'
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/bitcoin-order-app:${{ steps.changelog.outputs.tag }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/bitcoin-order-app:latest
+
+      # =================================================================
+      # == 原有功能：部署到 GitHub Pages
+      # =================================================================
+      
+      # 10. 部署到 GitHub Pages
+      - name: Deploy to GitHub Pages
+        run: npm run deploy
